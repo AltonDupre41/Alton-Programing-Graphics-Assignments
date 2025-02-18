@@ -125,7 +125,7 @@ switch(sprites[sprite]["anim"]) {
     break;
   
   case 'walk':
-    cur_sprite = sprites[sprite]["img"].get((80 * sprites[sprite]["frame"]),0,spriteX,spriteY);
+    cur_sprite = sprites[sprite]["img"].get((80 * sprites[sprite]["frame"]),32,spriteX,spriteY);
     image(cur_sprite,flip,sprites[sprite]["y"]);
     break;
 }
