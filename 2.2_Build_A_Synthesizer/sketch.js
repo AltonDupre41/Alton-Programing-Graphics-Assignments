@@ -27,7 +27,7 @@ let keyNotes = {
 
 function setup() {
   createCanvas(1000, 500);
-  //filt = new Tone.Filter(1500, "lowpass").toDestination();
+  filt = new Tone.Filter(1500, "lowpass").toDestination();
   rev = new Tone.Reverb(2).connect(filt);
   synth1 =  new Tone.Synth({
     envelope: {
