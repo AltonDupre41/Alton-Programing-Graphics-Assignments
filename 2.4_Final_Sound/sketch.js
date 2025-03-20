@@ -40,7 +40,7 @@ function preload() {
 function setup() {
   //angleMode(DEGREES);
   createCanvas(800, 500);
-  bugImg = loadImage("bug.png");
+  bugImg = loadImage("media/bug.png");
   textFont(gameFont);
   imageMode(CENTER);
 
