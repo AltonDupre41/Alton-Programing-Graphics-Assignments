@@ -188,7 +188,7 @@ function setup() {
 
   port = createSerial();
   connectButton = createButton("Connect to Arduino");
-  connectButton.mousePressed(connectToSerial);
+  connectButton.mousePressed(() => {connectToSerial();});
   connectButton.position(20,20);
 
   docButton = createButton("Documentation");
