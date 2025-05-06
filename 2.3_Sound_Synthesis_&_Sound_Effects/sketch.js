@@ -64,7 +64,7 @@ function setup() {
   part3 = new Tone.Part(((time, value) => {
     polySynth.set({
       envelope: {
-        attack: 0.1,
+        attack: 1,
         decay: 0,
         sustain: 1,
         release: 0.2

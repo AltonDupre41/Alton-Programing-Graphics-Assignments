@@ -1,6 +1,6 @@
 //import { Vector } from "../../../../../.vscode/extensions/samplavigne.p5-vscode-1.2.16/p5types/index";
 
-let _DEBUG = true; //enables debug features (like showing hit boxes)
+let _DEBUG = false; //enables debug features (like showing hit boxes)
 
 let port;
 let connectButton;
@@ -8,6 +8,12 @@ let buttonStatus = "";
 
 let documentation = "https://youtu.be/xvFZjo5PgG0"; // Link to PDF documentation that is hosted on the github pages
 let docButton;
+
+let timeouts = [];
+
+let song1Data,song2Data;
+let synths;
+let synth1, synth2, synth3, noise, filter, gain;
 
 /* Sprites used in game and their data
   Sprites are, PLAYER, ENEMY, ROCK, pLASER, eLASER, EXPLODE
@@ -90,6 +96,14 @@ let message = "New High Score!";
 let spacing = 20;
 let startColor;
 let endColor;
+
+let ctrlX = 0;
+let ctrlY = 0;
+let sw = 0;
+let btn1 = 0;
+let btn1Prev = 0;
+let btn2 = 0;
+let btn2Prev = 0;
 
 /* enemy_data | data stored for every enemy spawned
 free - is this free to be replaced
@@ -181,7 +195,7 @@ function preload() {
 function setup() {
   imageMode(CENTER);
   colorMode(HSB);
-  createCanvas(1330, 680);
+  createCanvas(1330, 670);
 
   startColor = color(255, 255, 255);
   endColor = color(0, 255, 255);
@@ -189,7 +203,11 @@ function setup() {
   port = createSerial();
   connectButton = createButton("Connect to Arduino");
   connectButton.mousePressed(() => {connectToSerial();});
-  connectButton.position(20,20);
+  connectButton.position(0,25);
+
+  // zeroButton = createButton('Zero Joystick');
+  // zeroButton.mousePressed(() => {zero();});
+  // zeroButton.position(0,50);
 
   docButton = createButton("Documentation");
   docButton.mousePressed(() => {toDoc();});
@@ -199,6 +217,75 @@ function setup() {
   sprites["ROCK"]["img"] = loadImage("sprites/Rock.png");
   sprites["EXPLODE"]["img"] = loadImage("sprites/explode.png")
   sprites["pLASER"]["img"] = loadImage("sprites/playerLazer.png")
+
+  fetch('music/music.json')
+  .then(response => response.json())
+  .then(data => {
+    song1Data = data;
+  });
+  fetch('music/music2.json')
+  .then(response => response.json())
+  .then(data => {
+    song2Data = data;
+  });
+
+  synth1 = new Tone.PolySynth(Tone.Synth, {
+    envelope: {
+      attack: 0.02,
+      decay: 0.1,
+      sustain: 0.3,
+      release: 1,
+    },
+    oscillator:{
+      type: 'sawtooth'
+    },
+  }).toDestination();
+
+  synth2 = new Tone.PolySynth(Tone.Synth, {
+    envelope: {
+      attack: 0.02,
+      decay: 0.1,
+      sustain: 0.3,
+      release: 1,
+    },
+    oscillator: {
+      type: 'square'
+    },
+  }).toDestination();
+
+  synth3 = new Tone.PolySynth(Tone.Synth, {
+    envelope: {
+      attack: 0.02,
+      decay: 0.1,
+      sustain: 0.3,
+      release: 1,
+    },
+    oscillator: {
+      type: 'sine'
+    },
+  }).toDestination();
+
+  filter = new Tone.Filter({
+    type: "bandpass",
+    frequency: 2000, // Center frequency
+    Q: 1,            // Bandwidth (lower Q = wider band)
+  }).toDestination();
+
+  gain = new Tone.Gain(3).connect(filter)
+
+  noise = new Tone.NoiseSynth({
+    noise: {
+      type: 'brown',
+    },
+    envelope: {
+      attack: 0.01,
+      decay: 1.5,
+      sustain: 0,
+      release: 2
+    },
+  }).connect(gain);
+
+  synths = [synth1, synth2, synth3];
 }
 
 function draw() {
@@ -207,7 +294,11 @@ function draw() {
   fill("GREY")
   rect(gameWinX,gameWinY,gameWinWidth,gameWinHeight); // Game Window, sprites should be bound in this box
 
+  decodeAudInput();
   plr_input();
+
+  let up = false;
+  let down = false;
 
   switch (gameState){
 
@@ -241,6 +332,9 @@ function draw() {
           let rock = rocks[_rock];
           if (!rock["free"]){
             move_rock(rock);
+
+            if (rock["dir"] == 1) {up = true;}
+            else if (rock["dir"] == -1) {down = true;}
           
             draw_hitbox(rock["x"], rock["y"]);
             let flip = false;
@@ -256,7 +350,7 @@ function draw() {
 
             //Rock_Player Colision
             if (pAlive && col(rock["x"],rock["y"],pX,pY)){
-              print("collide player");
+              //print("collide player");
               p_hit()
             }
 
@@ -265,10 +359,12 @@ function draw() {
               if (pAlive && i != _rock && col(rock["x"],rock["y"],rocks[i]["x"],rocks[i]["y"])){
                 rocks[i]["free"] = true;
                 rock["free"] = true;
-                numRocks -= 2;
 
                 createExplosion(rocks[i]["x"],rocks[i]["y"]);
+                numRocks-=1;
                 createExplosion(rock["x"],rock["y"]);
+                numRocks-=1;
+                triggerExplosion(numExplos);
               }
             }
             
@@ -300,6 +396,7 @@ function draw() {
                 numRocks -= 1;
 
                 createExplosion(rocks[i]["x"],rocks[i]["y"]);
+                triggerExplosion(numExplos);
 
                 score += 100;
 
@@ -394,6 +491,16 @@ function draw() {
       text("-Press FIRE to Start Again-",gameWinX + (gameWinWidth/2), gameWinHeight/1.2);
       break;
    }
+
+   if (up){
+    sendAudMsg("UP");
+   }
+   if (down){
+    sendAudMsg("DOWN");
+   }
+
+   btn1Prev = btn1;
+   btn2Prev = btn2;
 }
 
 /* Draws a sprite at the given Spot
@@ -458,32 +565,43 @@ Fire - Switches Gamestate to Start
 ---------
 */
 function plr_input() {
-  if (!port.opened()){keyHeld();}
+  keyHeld();
   switch (gameState){
 
     case GameStates.START:
-    
+      if ( btn1 != btn1Prev && btn1 == 1){switchSTate(GameStates.PLAY);}
       return;
 
     case GameStates.PLAY:
       if (pAlive){
-        
+        if (btn1 != btn1Prev && btn1 == 1){fire();}
+        if (btn2 != btn2Prev && btn2 == 1){flip();}
       }
       return;
 
     case GameStates.END:
-    
+      if (btn1 != btn1Prev && btn1 == 1){switchSTate(GameStates.START);}
       return;
    }
 }
 
 function keyHeld(){
+  let yDir = 0
+  if (pAlive && keyIsPressed && key === 'ArrowDown') {
+    yDir = 1
+  }
+  if (pAlive && keyIsPressed && key === 'ArrowUp') {
+    yDir = -1
+  }
   if (pAlive && keyIsPressed && key === 'ArrowRight') { // Press RightArrow - Move Right
-    move(1);
+    move(1, yDir);
   }
-  if (pAlive && keyIsPressed && key === 'ArrowLeft') { // Press LeftArrow - Move Left
-    move(-1);
+  else if (pAlive && keyIsPressed && key === 'ArrowLeft') { // Press LeftArrow - Move Left
+    move(-1,yDir);
   }
+  else if (yDir != 0){move(0,yDir);}
+  
+  
 }
 
 // Also handles player input, used for when no auduino is connected, or the player uses keyboard controls
@@ -571,6 +689,7 @@ function flip(){
 function p_hit(){
   pAlive = false;
   createExplosion(pX,pY,true)
+  triggerExplosion(numExplos);
 }
 
 /* Used when gamestate switches what changes is based on current gamestate
@@ -600,32 +719,49 @@ function switchSTate(newState){
       maxRocks = 3;
       rockCooldown = false;
       addedTime = 1000;
-      setTimeout(function(){
-        rock_cooldown_end();
-      }, 3000);
+      timeouts.push(setTimeout(function(){rock_cooldown_end();}, 3000));
+
+      
+      playMidiData(song1Data);
 
       gameState = newState;
       return;
 
     case GameStates.PLAY:
+      Tone.start();
+      
+      for (var i=0; i<timeouts.length; i++) {
+        clearTimeout(timeouts[i]);
+      }
+
       timer = false;
       for (i in explos){
         explos[i]["free"] = true;
-        numExplos -= 1;
       }
+      numExplos -= 0;
       for (i in rocks){
         rocks[i]["free"] = true;
-        numRocks -= 1;
       }
+      numRocks = 0;
       for (i in pLaser){
         pLaser[i]["free"]=true;
-        numPLaser -= 1;
       }
-      
+      numPLaser = 0;
+
+      Tone.Transport.cancel();
+      Tone.Transport.stop();
+      Tone.Transport.loop = false;
+
+      playMidiData(song2Data);
+          
       gameState = newState;
       return;
 
     case GameStates.END:
+
+      Tone.Transport.cancel();
+      Tone.Transport.stop();
+      Tone.Transport.loop = false;
     
       gameState = newState;
       return;
@@ -639,11 +775,12 @@ function spawn_wave() {
 
 // spawns rocks | only [maxRocks] can be used 
 function spawn_rocks(){
+  if (gameState != GameStates.PLAY){return;}
   numRocks += 1
   let randX = round(random(gameWinX ,gameWinX + (gameWinWidth - spriteSize)));
   let randFrame = round(random(0,sprites["ROCK"]["maxFrames"]-1))
   let bottom = round(random(0,1));
-  print(bottom);
+  //print(bottom);
   let dir = 1;
   if (bottom == 1){dir = -1};
 
@@ -659,9 +796,7 @@ function spawn_rocks(){
         "dir":dir
       }
       let newTime = setRockCooldown()
-      setTimeout(function(){
-        rock_cooldown_end();
-      }, newTime);
+      timeouts.push(setTimeout(function(){rock_cooldown_end();}, newTime));
       return;
     }
   }
@@ -676,14 +811,12 @@ function spawn_rocks(){
     "dir":dir
   };
   let newTime = setRockCooldown()
-  setTimeout(function(){
-    rock_cooldown_end();
-  }, newTime);
+  timeouts.push(setTimeout(function(){rock_cooldown_end();}, newTime));
 }
 
 function setRockCooldown(){
   let new_cooldown = MAX_COOLDOWN - round(random(0,addedTime));
-  print(new_cooldown);
+  //print(new_cooldown);
   return new_cooldown;
 }
 
@@ -720,6 +853,15 @@ if the laser hits a boundary the laser just disapears*/
 function move_eLaser(laser){
 
 }
+
+function triggerExplosion(delay = 0) {
+  const now = Tone.now();
+  noise.triggerAttackRelease("2n", now);
+  filter.frequency.setValueAtTime(12000, now);
+  filter.frequency.exponentialRampToValueAtTime(300, now + 2);
+
+}
+
 
 function createExplosion(x,y,isPlayer = false){
   numExplos += 1;
@@ -779,10 +921,124 @@ function stopwatch(){
   }
 }
 
+function playMidiData(data) {
+  if (!data || !data.tracks) {
+    console.error("Invalid data format");
+    return;
+  }
+
+  const tracksWithNotes = data.tracks
+    .map((track, index) => ({ track, index }))
+    .filter(obj => obj.track.notes && obj.track.notes.length > 0);
+
+  if (tracksWithNotes.length === 0) {
+    console.error("No note data found in any track.");
+    return;
+  }
+
+  tracksWithNotes.forEach((obj, i) => {
+    const track = obj.track;
+
+    const sortedEvents = obj.track.notes
+      .map(note => ({
+        time: Tone.Time(note.time).toSeconds(),
+        note: note.name,
+        duration: note.duration,
+        velocity: note.velocity || 1
+      }))
+      .sort((a, b) => a.time - b.time);
+
+    for (let j = 1; j < sortedEvents.length; j++) {
+      if (sortedEvents[j].time <= sortedEvents[j - 1].time) {
+        sortedEvents[j].time = sortedEvents[j - 1].time + 0.0001;
+      }
+    }
+
+    const part = new Tone.Part((time, value) => {
+      synths[i].triggerAttackRelease(value.note, value.duration, time, value.velocity);
+    }, sortedEvents.map(e => ({ time: e.time, ...e })));
+    
+    part.start(0);
+    
+    if (obj.track.pitchBends && obj.track.pitchBends.length > 0) {
+      obj.track.pitchBends.forEach(bend => {
+        const bendTime = Tone.Time(bend.time).toSeconds();
+        const detuneValue = bend.value * 200;
+        
+        Tone.Transport.schedule((time) => {
+          synths[i].set({ detune: detuneValue });
+        }, bendTime);
+      });
+    }
+
+    const allNoteEndTimes = tracksWithNotes.flatMap(obj =>
+      obj.track.notes.map(note => Tone.Time(note.time).toSeconds() + Tone.Time(note.duration).toSeconds())
+    );
+    const loopEnd = Math.max(...allNoteEndTimes);
+    
+    part.loop = true;
+    part.loopStart = 0;
+    part.loopEnd = loopEnd;
+    
+  });
+
+  synths.forEach(synth => {
+    synth.set({ volume: -10 });
+    if (synth == noise){synth.triggerRelease()}
+    else {synth.releaseAll();}
+  });
+
+  Tone.Transport.start();
+}
+
+/* Given the Aud Input, it takes its string and decodes it
+
+third number - flag for if the fire button is being pressed
+fourth number - flag for if the flip button is being pressed
+*/
+function decodeAudInput(){
+
+  let str = port.readUntil('\n');
+  //print("\n" + str)
+  if (str !== "") {
+    if (str.includes("FIRE")){btn1 = 1;}
+    else {btn1 = 0;}
+    if (str.includes("FLIP")){btn2 = 1;}
+    else {btn2 = 0;}
+
+    //print(ctrlX + "," + ctrlY + "," + sw + "," + btn1 + "," + btn2);
+  }
+}
+
+/*Sends message to aud serial
+*/
+function sendAudMsg(msg){
+  if (port.opened()) {
+    port.write(msg + '\n');
+  }
+}
+
+function lerp(start, end, amount) {
+  return start + (end - start) * amount;
+}
+
+function clamp(num, min, max) {
+  return Math.min(Math.max(num, min), max);
+}
+
+
+
 function connectToSerial() {
   port.open('Arduino', 9600);
+}
+
+function zero() {
+  if (port.opened()) {
+    port.write('zero\n');
+  }
 }
 
 function toDoc(){
   window.location.href = documentation;
 }
+
