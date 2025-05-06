@@ -6,7 +6,7 @@ let port;
 let connectButton;
 let buttonStatus = "";
 
-let documentation = "https://youtu.be/xvFZjo5PgG0"; // Link to PDF documentation that is hosted on the github pages
+let documentation = "https://altondupre41.github.io/Alton-Programing-Graphics-Assignments/Final-Project-Documentation/index.html"; // Link to PDF documentation that is hosted on the github pages
 let docButton;
 
 let timeouts = [];
